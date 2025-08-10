@@ -1,0 +1,91 @@
+#include <stdio.h>
+#include <stdint.h>
+
+#define MEMORY_SIZE (100 * 1024) // 100 KB
+
+// Simulated RAM
+static uint8_t memory[MEMORY_SIZE];
+
+// Structure for memory block metadata
+typedef struct Block {
+    uint32_t size;       // Size of the block in bytes
+    uint8_t free;        // 1 = free, 0 = allocated
+    struct Block *next;  // Pointer to the next block
+} Block;
+
+#define BLOCK_SIZE sizeof(Block)
+
+static Block *freeList = (Block*)memory; // Start of the free list
+
+// Initialize memory manager
+void init_memory() {
+    freeList->size = MEMORY_SIZE - BLOCK_SIZE;
+    freeList->free = 1;
+    freeList->next = NULL;
+}
+
+// Allocate memory
+void* allocate(uint32_t size) {
+    if (size < 1 || size > MEMORY_SIZE - BLOCK_SIZE)
+        return NULL;
+
+    Block *curr = freeList;
+
+    while (curr) {
+        if (curr->free && curr->size >= size) {
+            // Split block if extra space remains
+            if (curr->size > size + BLOCK_SIZE) {
+                Block *newBlock = (Block*)((uint8_t*)curr + BLOCK_SIZE + size);
+                newBlock->size = curr->size - size - BLOCK_SIZE;
+                newBlock->free = 1;
+                newBlock->next = curr->next;
+                curr->next = newBlock;
+                curr->size = size;
+            }
+            curr->free = 0;
+            return (uint8_t*)curr + BLOCK_SIZE; // Return usable memory
+        }
+        curr = curr->next;
+    }
+    return NULL; // No suitable block found
+}
+
+// Deallocate memory
+void deallocate(void *ptr) {
+    if (!ptr) return;
+
+    Block *blockPtr = (Block*)((uint8_t*)ptr - BLOCK_SIZE);
+    blockPtr->free = 1;
+
+    // Merge adjacent free blocks
+    Block *curr = freeList;
+    while (curr) {
+        if (curr->free && curr->next && curr->next->free) {
+            curr->size += BLOCK_SIZE + curr->next->size;
+            curr->next = curr->next->next;
+        } else {
+            curr = curr->next;
+        }
+    }
+}
+int main() {
+    init_memory();
+
+    int *mem[100];
+
+    mem[0] = (int*)allocate(128);
+    mem[1] = (int*)allocate(1024);
+    mem[2] = (int*)allocate(4096);
+
+    printf("Allocated mem[0] at %p\n", mem[0]);
+    printf("Allocated mem[1] at %p\n", mem[1]);
+    printf("Allocated mem[2] at %p\n", mem[2]);
+
+    deallocate(mem[1]);
+    printf("Deallocated mem[1]\n");
+
+    mem[1] = (int*)allocate(512);
+    printf("Allocated mem[1] again at %p\n", mem[1]);
+
+    return 0;
+}
